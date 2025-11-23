@@ -1,18 +1,12 @@
 import streamlit as st
 import json
 import os
-from pathlib import Path
-from musicai_sdk import MusicAiClient
 from main import process_audio_with_music_ai
-from chrodsSync import sync_lyrics_with_chords, load_json_files, save_synced_output
-import streamlit.components.v1 as components
-import html as html_lib
+from chrodsSync import sync_lyrics_with_chords, load_json_files
 from display import display_synced_lyrics
 from slice_audio import extract_chord_segments
-from dotenv import load_dotenv
 from utils import select_guitar_or_piano
-
-load_dotenv()
+from constants import *
 
 # Set page config
 st.set_page_config(
@@ -22,19 +16,6 @@ st.set_page_config(
 )
 
 st.title("🎵 Lyrics & Chords Synchronizer")
-
-# Configuration
-API_KEY = os.getenv("API_KEY", "")
-WORKFLOW_NAME = "computacao-musical-rosa"
-OUTPUT_DIR = "results"
-DEMO_DIR = "demo"
-SKIP = True
-
-if not API_KEY:
-    print("Warning: API_KEY not found. Check your .env file.")
-else:
-    print("API_KEY loaded successfully.")
-
 
 def find_latest_json_files(output_dir):
     """Find the latest generated JSON files in the output directory."""
