@@ -7,7 +7,6 @@ API_KEY = os.getenv("API_KEY", "")
 WORKFLOW_NAME = "computacao-musical-rosa"
 OUTPUT_DIR = "results"
 DEMO_DIR = "demo"
-SKIP = True
 
 if not API_KEY:
     print("Warning: API_KEY not found. Check your .env file.")
