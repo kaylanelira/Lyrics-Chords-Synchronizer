@@ -5,17 +5,17 @@ from main import process_audio_with_music_ai
 from chrodsSync import sync_lyrics_with_chords, load_json_files
 from display import display_synced_lyrics
 from slice_audio import extract_chord_segments
-from utils import select_guitar_or_piano
+from utils import get_instruments, mix_audio_files
 from constants import *
 
 # Set page config
 st.set_page_config(
-    page_title="Lyrics & Chords Sync",
+    page_title="Play Along",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-st.title("🎵 Lyrics & Chords Synchronizer")
+st.title("🎵 Play Along Generator")
 
 def find_latest_json_files(output_dir):
     """Find the latest generated JSON files in the output directory."""
@@ -42,7 +42,7 @@ st.header("📤 Upload Audio File")
 col1, col2 = st.columns(2)
 
 with col1:
-    uploaded_file = st.file_uploader("Choose an MP3 file", type=["mp3", "wav", "m4a"])
+    uploaded_file = st.file_uploader("Choose an audio file", type=["mp3", "wav", "m4a"])
     
     if uploaded_file is not None:
         st.success("✅ File uploaded successfully!")
@@ -53,89 +53,58 @@ with col1:
             st.session_state.audio_data = uploaded_file
         
         # Show file info
-        st.info(f"File size: {uploaded_file.size / 1024 / 1024:.2f} MB")
+        #st.info(f"File size: {uploaded_file.size / 1024 / 1024:.2f} MB")
 
 st.divider()
-st.header("⚙️ Process Audio with Music.AI")
+st.header("⚙️ Process Audio")
 
-# Check for pre-existing JSON files from results folder
-lyrics_file, chords_file = find_latest_json_files(DEMO_DIR)
-pre_existing_files = lyrics_file and chords_file
+col1, col2 = st.columns(2)
 
-if pre_existing_files and "synced_data" not in st.session_state:
-    st.info("📁 Found pre-existing JSON files in the results folder. Loading...")
-    with st.spinner("Loading pre-existing data..."):
-        lyrics_data, chords_data = load_json_files(lyrics_file, chords_file)
-        if lyrics_data and chords_data:
-            # Automatically sync
-            with st.spinner("Synchronizing lyrics with chords..."):
-                synced_result = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
-                if synced_result:
-                    st.session_state.synced_data = synced_result
-                    st.success(f"✅ Loaded and synchronized data from:\n- {os.path.basename(lyrics_file)}\n- {os.path.basename(chords_file)}")
+with col1:
+    if "audio_data" in st.session_state and st.session_state.audio_data:
+        if st.button("🚀 Process with Music.AI", key="process_music_ai"):
+            try:
+                # Save uploaded file temporarily
+                temp_file_path = "temp_upload.mp3"
+                with open(temp_file_path, "wb") as f:
+                    f.write(st.session_state.audio_data.getbuffer())
+                print(f"Saved uploaded file to {temp_file_path}")
+                
+                # Use imported function from main.py
+                with st.spinner("Processing audio with Music.AI..."):
+                    result = process_audio_with_music_ai(
+                        api_key=API_KEY,
+                        workflow_name=WORKFLOW_NAME,
+                        mp3_file_path=temp_file_path,
+                        output_dir="results/api",  # API results go to results/api
+                        verbose=True
+                    )
+                    print(f"Music.AI processing result: {result}")
+                
+                if result["success"]:
+                    st.success("✅ Job completed successfully!")
+                    # Set the results folder for the unified workflow
+                    st.session_state.results_folder = "results/api"
+                    st.session_state.process_completed = True
 
-if "audio_data" in st.session_state and st.session_state.audio_data:
-    if st.button("🚀 Process with Music.AI", key="process_music_ai"):
-        try:
-            # Save uploaded file temporarily
-            temp_file_path = "temp_upload.mp3"
-            with open(temp_file_path, "wb") as f:
-                f.write(st.session_state.audio_data.getbuffer())
-            print(f"Saved uploaded file to {temp_file_path}")
+                    # Clean up
+                    os.remove(temp_file_path)
+                else:
+                    st.error(f"Job failed: {result.get('message', 'Unknown error')}")
+                    st.session_state.show_backup_upload = True
             
-            # Use imported function from main.py
-            with st.spinner("Processing audio with Music.AI..."):
-                result = process_audio_with_music_ai(
-                    api_key=API_KEY,
-                    workflow_name=WORKFLOW_NAME,
-                    mp3_file_path=temp_file_path,
-                    output_dir=OUTPUT_DIR,
-                    verbose=True
-                )
-                print(f"Music.AI processing result: {result}")
-            
-            if result["success"]:
-                st.success("✅ Job completed successfully!")
-                    
-                # Load the generated JSON files
-                lyrics_file = result.get("lyrics_file")
-                chords_files = result.get("chords_files")
-                stem_files = result.get("stem_files", [])
-                stem_file = None
-                chords_file = None
-                file_type = None
-
-                chords_file, stem_file = select_guitar_or_piano(chords_files, stem_files)
-                print(f"Selected chords file: {chords_file}")
-                print(f"Selected stem file: {stem_file}")
-
-                if lyrics_file and chords_file:
-                    with open(lyrics_file, 'r') as f:
-                        lyrics_data = json.load(f)
-                    with open(chords_file, 'r') as f:
-                        chords_data = json.load(f)
-                    
-                    # Automatically run chords sync
-                    with st.spinner("Synchronizing lyrics with chords..."):
-                        synced_result = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
-                        if synced_result:
-                            st.session_state.chords_filepath = chords_file
-                            st.session_state.stem_filepath = stem_file
-                            st.session_state.synced_data = synced_result
-                            st.success("✅ Synchronization completed!")
-
-                # Clean up
-                os.remove(temp_file_path)
-            else:
-                st.error(f"Job failed: {result.get('message', 'Unknown error')}")
+            except Exception as e:
+                st.error(f"Error processing with Music.AI: {str(e)}")
                 st.session_state.show_backup_upload = True
-        
-        except Exception as e:
-            st.error(f"Error processing with Music.AI: {str(e)}")
-            st.session_state.show_backup_upload = True
-else:
-    if not pre_existing_files:
+    else:
         st.info("👈 Please upload an audio file first")
+
+with col2:
+    if st.button("🧪 Load Demo", key="load_demo"):
+        # Set the results folder for the unified workflow
+        st.session_state.results_folder = "results/demo"
+        st.session_state.process_completed = True
+        st.success("✅ Demo loaded successfully!")
 
 # Show backup file upload only if processing failed
 if st.session_state.get("show_backup_upload", False):
@@ -165,50 +134,87 @@ if st.session_state.get("show_backup_upload", False):
                 st.session_state.synced_data = synced_result
                 st.success("✅ Synchronization completed!")
 
-# Display synced lyrics if available
-if "synced_data" in st.session_state:
+
+# --- UNIFIED PLAY-ALONG WORKFLOW ---
+if st.session_state.get("process_completed", False):
     st.divider()
-    st.header("🎼 Synchronized Lyrics with Chords")
-
-    demo_chords_file_path, demo_stem_file_path = select_guitar_or_piano(
-        chords_files=[DEMO_DIR + "/guitar_chords_file.json", DEMO_DIR + "/piano_chords_file.json"],
-        stem_files=[DEMO_DIR + "/guitar_stem.wav", DEMO_DIR + "/piano_stem.wav"]
-    )
+    st.header("🎵 Play Along")
     
-    synced_data = st.session_state.synced_data
-    stem_filepath = st.session_state.get("stem_filepath", demo_stem_file_path)
-    chords_filepath = st.session_state.get("chords_filepath", demo_chords_file_path)
-
-    print(f"Using stem file: {stem_filepath}")
-    print(f"Using chords file: {chords_filepath}")
-
-    sliced_chords, sr = extract_chord_segments(stem_filepath, chords_filepath)
-    display_synced_lyrics(synced_data, sliced_chords, sr)
+    results_folder = st.session_state.results_folder
     
-    # Download section
-    st.divider()
-    st.subheader("📥 Download Results")
-    
-    # Create text output
-    text_output = ' '.join([item['word'] for item in synced_data])
-    
-    # Create JSON output
-    json_output = json.dumps(synced_data, indent=2)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.download_button(
-            label="📄 Download as Text",
-            data=text_output,
-            file_name="lyrics_with_chords.txt",
-            mime="text/plain"
-        )
-    
-    with col2:
-        st.download_button(
-            label="📊 Download as JSON",
-            data=json_output,
-            file_name="synced_lyrics.json",
-            mime="application/json"
-        )
+    # Gather all stems and chord files from the selected folder
+    if os.path.exists(results_folder):
+        files = os.listdir(results_folder)
+        chords_files = [os.path.join(results_folder, f) for f in files if f.endswith("_chords.json")]
+        stem_files = [os.path.join(results_folder, f) for f in files if f.endswith(".wav")]
+        lyrics_file = os.path.join(results_folder, "lyrics.json")
+        
+        # Load all available instruments and their files
+        instruments = get_instruments(chords_files=chords_files, stem_files=stem_files)
+        
+        instrument_options = list(instruments.keys())
+        if not instrument_options:
+            st.error(f"No instruments found in {results_folder} folder.")
+        else:
+            # Instrument selection
+            current_muted = st.selectbox(
+                "Select the instrument you want to play along with (muted):",
+                instrument_options,
+                index=0,
+                key="mute_select"
+            )
+            
+            # Check if instrument changed to recalculate chords
+            if "current_muted" not in st.session_state or st.session_state.current_muted != current_muted or "current_folder" not in st.session_state or st.session_state.current_folder != results_folder:
+                st.session_state.current_muted = current_muted
+                st.session_state.current_folder = results_folder
+                
+                # Load lyrics and chords for the muted instrument
+                with open(lyrics_file, 'r') as f:
+                    lyrics_data = json.load(f)
+                chords_filepath = instruments[current_muted]['chords']
+                with open(chords_filepath, 'r') as f:
+                    chords_data = json.load(f)
+                
+                # Sync lyrics and chords
+                st.session_state.synced_data = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
+                st.session_state.chords_filepath = chords_filepath
+                st.session_state.stem_filepath = instruments[current_muted]['audio']
+            
+            # Get active tracks (all except muted)
+            active_tracks = []
+            active_track_names = []
+            for inst, files in instruments.items():
+                if inst != current_muted and files['audio']:
+                    active_tracks.append(files['audio'])
+                    active_track_names.append(inst.title())
+            
+            if active_tracks:
+                st.write(f"**Playing:** {' + '.join(active_track_names)}")
+                st.write(f"**Muted for play-along:** {current_muted.title()}")
+                
+                # Use a single reusable mixed file (overwrite each time)
+                mixed_file_path = os.path.join(results_folder, "mixed_playback.wav")
+                
+                # Always regenerate the mixed file for the current selection
+                with st.spinner("Mixing audio tracks..."):
+                    try:
+                        mixed_path = mix_audio_files(active_tracks, mixed_file_path)
+                        if mixed_path and os.path.exists(mixed_path):
+                            st.audio(mixed_path, format="audio/wav")
+                        else:
+                            st.error("Failed to mix audio tracks")
+                    except Exception as e:
+                        st.error(f"Error mixing audio: {e}")
+            
+            # Show chords for the muted instrument
+            if "synced_data" in st.session_state:
+                st.subheader(f"🎼 Chord Guide")
+                stem_filepath = st.session_state.stem_filepath
+                chords_filepath = st.session_state.chords_filepath
+                synced_data = st.session_state.synced_data
+                
+                sliced_chords, sr = extract_chord_segments(stem_filepath, chords_filepath) if stem_filepath else (None, None)
+                display_synced_lyrics(synced_data, sliced_chords, sr)
+    else:
+        st.error(f"Results folder {results_folder} not found.")

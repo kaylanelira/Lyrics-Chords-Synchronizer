@@ -1,60 +1,106 @@
 import json
 import os
 
-def select_guitar_or_piano(chords_files, stem_files):
+def get_instruments(chords_files, stem_files):
     """
-    Scans a list of chord files for a valid JSON (len > 1), determines
-    if it is guitar/piano, and finds the corresponding audio stem.
+    Scans a list of chord files and audio stems, and returns a dictionary mapping
+    instrument types (e.g., 'guitar', 'piano', 'voice') to their chord and audio files.
 
     Args:
         chords_files (list): List of file paths to JSON chord files.
         stem_files (list): List of file paths to audio stem files.
 
     Returns:
-        tuple: (chords_file, stem_file, file_type) or (None, None, None) if failed.
+        dict: {instrument_type: {'chords': chord_file, 'audio': audio_file}}
     """
-    selected_chords_file = None
-    selected_stem_file = None
-    file_type = None
+    instruments = {}
 
-    # 1. Find the first valid chords file (must have > 1 chord event)
+    # 1. Find all valid chords files (must have > 1 chord event)
     for file_path in chords_files:
         if not os.path.exists(file_path):
             continue
-            
         try:
             with open(file_path, 'r') as f:
                 chords_data = json.load(f)
-                # Ensure it's a list and has content
                 if isinstance(chords_data, list) and len(chords_data) > 1:
-                    selected_chords_file = file_path
-                    break
+                    filename_lower = file_path.lower()
+                    if "guitar" in filename_lower:
+                        inst = "guitar"
+                    elif "piano" in filename_lower:
+                        inst = "piano"
+                    elif "vocals" in filename_lower:
+                        inst = "vocals"
+                    elif "bass" in filename_lower:
+                        inst = "bass"
+                    elif "drums" in filename_lower:
+                        inst = "drums"
+                    else:
+                        # Try to extract instrument from filename
+                        inst = os.path.splitext(os.path.basename(file_path))[0]
+                    instruments[inst] = {'chords': file_path, 'audio': None}
         except (json.JSONDecodeError, IOError):
-            continue # Skip corrupted or unreadable files
+            continue
 
-    # If no valid chords file was found, return early
-    if not selected_chords_file:
-        print("Warning: No valid chord file found (with > 1 event).")
-        return None, None
+    if not instruments:
+        print("Warning: No valid chord files found (with > 1 event).")
+        return {}
 
-    # 2. Determine the instrument type
-    filename_lower = selected_chords_file.lower()
-    if "guitar" in filename_lower:
-        file_type = "guitar"
-    elif "piano" in filename_lower:
-        file_type = "piano"
-    else:
-        # You can choose to raise an error or return None here
-        raise ValueError(f"Unknown instrument type in filename: {selected_chords_file}")
+    # 2. Find the matching audio stem for each instrument
+    for inst in instruments:
+        for stem in stem_files:
+            if inst in stem.lower():
+                instruments[inst]['audio'] = stem
+                break
+        if not instruments[inst]['audio']:
+            print(f"Warning: Found {inst} chords, but no matching audio stem.")
 
-    # 3. Find the matching audio stem
-    for stem in stem_files:
-        if file_type in stem.lower():
-            selected_stem_file = stem
-            break
+    return instruments
+
+def mix_audio_files(audio_files, output_path):
+    """
+    Mix multiple audio files into a single output file.
+    """
+    import soundfile as sf
+    import numpy as np
+    
+    if not audio_files:
+        return None
+    
+    # Load first audio file to get properties
+    mixed_audio, sample_rate = sf.read(audio_files[0])
+    
+    # Mix in other audio files
+    for audio_file in audio_files[1:]:
+        try:
+            audio_data, sr = sf.read(audio_file)
+            if sr != sample_rate:
+                print(f"Warning: Sample rate mismatch in {audio_file}")
+                continue
             
-    if not selected_stem_file:
-        print(f"Warning: Found {file_type} chords, but no matching audio stem.")
-        return None, None
-
-    return selected_chords_file, selected_stem_file
+            # Handle different lengths by padding with zeros
+            if len(audio_data) > len(mixed_audio):
+                # Pad mixed_audio to match longer file
+                if mixed_audio.ndim == 1:
+                    mixed_audio = np.pad(mixed_audio, (0, len(audio_data) - len(mixed_audio)))
+                else:
+                    mixed_audio = np.pad(mixed_audio, ((0, len(audio_data) - len(mixed_audio)), (0, 0)))
+            elif len(audio_data) < len(mixed_audio):
+                # Pad audio_data to match mixed_audio
+                if audio_data.ndim == 1:
+                    audio_data = np.pad(audio_data, (0, len(mixed_audio) - len(audio_data)))
+                else:
+                    audio_data = np.pad(audio_data, ((0, len(mixed_audio) - len(audio_data)), (0, 0)))
+            
+            # Add audio data to mix
+            mixed_audio = mixed_audio + audio_data
+        except Exception as e:
+            print(f"Error processing {audio_file}: {e}")
+            continue
+    
+    # Normalize to prevent clipping
+    if mixed_audio.max() > 1.0 or mixed_audio.min() < -1.0:
+        mixed_audio = mixed_audio / np.max(np.abs(mixed_audio))
+    
+    # Save mixed audio
+    sf.write(output_path, mixed_audio, sample_rate)
+    return output_path
