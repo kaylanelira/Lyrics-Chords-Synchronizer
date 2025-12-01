@@ -238,7 +238,24 @@ if st.session_state.get("process_completed", False):
                     active_tracks.append(files['audio'])
                     active_track_names.append(inst.title())
             
-            if active_tracks:
+            # Check if all other instruments have only "N" chords
+            all_other_are_silent = True
+            for inst, files in instruments.items():
+                if inst != current_muted and files['chords']:
+                    try:
+                        with open(files['chords'], 'r') as f:
+                            chords_data = json.load(f)
+                            # Check if there's at least one chord that's not "N"
+                            valid_chords = [chord for chord in chords_data if chord.get("chord_majmin") != "N"]
+                            if valid_chords:
+                                all_other_are_silent = False
+                                break
+                    except (json.JSONDecodeError, IOError):
+                        continue
+            
+            if all_other_are_silent:
+                st.error("❌ Cannot extract audio: All other instruments have no valid chord data (only silence/N). The audio processing may have failed for these tracks.")
+            elif active_tracks:
                 st.write(f"**Playing:** {' + '.join(active_track_names)}")
                 st.write(f"**Muted for play-along:** {current_muted.title()}")
                 
