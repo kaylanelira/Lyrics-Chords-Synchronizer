@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+from streamlit_advanced_audio import audix, WaveSurferOptions
 from main import process_audio_with_music_ai
 from chordsSync import sync_lyrics_with_chords, load_json_files
 from display import display_synced_lyrics
@@ -16,6 +17,69 @@ st.set_page_config(
 )
 
 st.title("🎵 Play Along Generator")
+
+def create_waveform_player(audio_file):
+    """Create an interactive waveform player using streamlit_advanced_audio."""
+    try:
+        # Save temporarily
+        temp_dir = "temp"
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Get file extension
+        file_ext = audio_file.name.split('.')[-1].lower()
+        temp_audio_path = os.path.join(temp_dir, f"preview_audio.{file_ext}")
+        
+        # Write the audio file
+        with open(temp_audio_path, "wb") as f:
+            f.write(audio_file.getbuffer())
+        
+        # Show file info
+        st.info(f"📁 {audio_file.name} ({audio_file.size / 1024 / 1024:.2f} MB)")
+        
+        # Configure WaveSurfer options with custom styling
+        options = WaveSurferOptions(
+            wave_color="#1DB954",           # Spotify green
+            progress_color="#1ed760",        # Lighter green
+            cursor_color="#1DB954",
+            height=120,
+            bar_height=2,
+            bar_width=2,
+            bar_radius=2,
+            normalize=True
+        )
+        
+        # Create the interactive player
+        result = audix(
+            temp_audio_path,
+            wavesurfer_options=options
+        )
+        
+        # Display playback information if available
+        if result:
+            col1, col2 = st.columns(2)
+            with col1:
+                if result.get('currentTime') is not None:
+                    current_mins = int(result['currentTime'] // 60)
+                    current_secs = int(result['currentTime'] % 60)
+                    st.caption(f"⏱️ Current Time: {current_mins}:{current_secs:02d}")
+            
+            with col2:
+                if result.get('selectedRegion'):
+                    region = result['selectedRegion']
+                    st.caption(f"🎯 Selected: {region.get('start', 0):.1f}s - {region.get('end', 0):.1f}s")
+        
+        # Clean up temp file after a delay
+        try:
+            if os.path.exists(temp_audio_path):
+                os.remove(temp_audio_path)
+        except:
+            pass
+            
+    except Exception as e:
+        print(f"Error in create_waveform_player: {str(e)}")
+        st.warning(f"⚠️ Could not create waveform player: {str(e)}")
+        # Fallback to native player
+        st.audio(audio_file, format=f"audio/{file_ext}" if '.' in audio_file.name else "audio/mp3")
 
 def find_latest_json_files(output_dir):
     """Find the latest generated JSON files in the output directory."""
@@ -61,8 +125,8 @@ with col1:
             if "results_folder" in st.session_state:
                 del st.session_state.results_folder
         
-        # Always show audio player when file is uploaded
-        st.audio(uploaded_file, format="audio/mp3")
+        # Show interactive waveform player when file is uploaded
+        create_waveform_player(uploaded_file)
         #st.info(f"📁 {uploaded_file.name} ({uploaded_file.size / 1024 / 1024:.2f} MB)")
     else:
         # Clear session state when no file is uploaded
