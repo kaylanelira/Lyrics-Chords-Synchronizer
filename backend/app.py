@@ -332,14 +332,17 @@ if st.session_state.get("process_completed", False):
                     except Exception as e:
                         st.error(f"Error mixing audio: {e}")
             
-            # Show chords for the muted instrument
+            # Show lyrics for the muted instrument (chords only if not vocals)
             if "synced_data" in st.session_state:
-                st.subheader(f"🎼 Chord Guide")
+                st.subheader(f"🎼 Lyrics")
                 stem_filepath = st.session_state.stem_filepath
                 chords_filepath = st.session_state.chords_filepath
                 synced_data = st.session_state.synced_data
                 
+                # Show chord buttons only if not vocals
+                show_chords = current_muted.lower() != "vocals"
+                
                 sliced_chords, sr = extract_chord_segments(stem_filepath, chords_filepath) if stem_filepath else (None, None)
-                display_synced_lyrics(synced_data, sliced_chords, sr)
+                display_synced_lyrics(synced_data, sliced_chords, sr, show_chords=show_chords)
     else:
         st.error(f"Results folder {results_folder} not found.")
