@@ -3,7 +3,7 @@
 A Streamlit web application that processes audio files with Music.AI to extract instrument stems and chord progressions, enabling interactive play-along experiences with real-time chord guides.
 
 **Links:**
-- 🌐 [Live Application](https://computacao-musical.streamlit.app/)
+- 🌐 [Live Application](https://computacao-musical-bpjzb3w989qkegxuvzacnu.streamlit.app/)
 - 🎵 [Music Folder](https://drive.google.com/drive/folders/1xgPrkg0Lqx0fshC4N3ivPULE-ZWnFOoO)
 
 ## Table of Contents
